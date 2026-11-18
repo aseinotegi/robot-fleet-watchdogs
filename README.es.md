@@ -1,6 +1,6 @@
 # Robot Fleet Watchdogs
 
-[![CI](https://github.com/aseinotegi/robot-fleet-watchdogs-showcase/actions/workflows/ci.yml/badge.svg)](https://github.com/aseinotegi/robot-fleet-watchdogs-showcase/actions/workflows/ci.yml)
+[![CI](https://github.com/aseinotegi/robot-fleet-watchdogs/actions/workflows/ci.yml/badge.svg)](https://github.com/aseinotegi/robot-fleet-watchdogs/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 ![Licencia](https://img.shields.io/badge/licencia-MIT-green)
 

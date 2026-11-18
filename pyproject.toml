@@ -29,7 +29,7 @@ fleet-watchdogs = "fleet_watchdogs.__main__:main"
 
 [project.urls]
 Homepage = "https://andersein.com"
-Source = "https://github.com/aseinotegi/robot-fleet-watchdogs-showcase"
+Source = "https://github.com/aseinotegi/robot-fleet-watchdogs"
 
 [tool.setuptools.packages.find]
 where = ["src"]
