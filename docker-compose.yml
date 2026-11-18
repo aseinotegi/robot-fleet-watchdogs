@@ -1,0 +1,22 @@
+# Demo: three simulated robots supervised by the watchdogs.
+#   docker compose up --build
+#   Alert e-mails  -> http://localhost:8025  (Mailpit inbox)
+#   Watchdog API   -> http://localhost:8080/status
+services:
+  watchdogs:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/docker.yaml:/config/config.yaml:ro
+      - watchdog-data:/data
+    depends_on: [mailpit]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # web inbox
+
+volumes:
+  watchdog-data:
