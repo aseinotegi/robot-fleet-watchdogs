@@ -1,74 +1,127 @@
-# 🛡️ Robot Fleet Watchdogs — Servicios de vigilancia autónoma para flotas de robots
+# Robot Fleet Watchdogs
 
-Conjunto de **microservicios en producción** que vigilan 24/7 una flota de robots de inspección en instalaciones oil & gas y **actúan solos** ante los fallos más habituales, sin que un operador tenga que intervenir.
+[![CI](https://github.com/aseinotegi/robot-fleet-watchdogs-showcase/actions/workflows/ci.yml/badge.svg)](https://github.com/aseinotegi/robot-fleet-watchdogs-showcase/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-> **Nota:** este repositorio es un **caso de estudio anonimizado**. Describe un sistema real que he diseñado y que está en producción para un cliente industrial. No contiene código ni datos porque son confidenciales; el objetivo es mostrar la arquitectura, las decisiones técnicas y cómo trabajo con estas tecnologías.
+**English** · [Español](README.es.md)
 
-## 🎯 El problema
+Autonomous inspection robots in industrial plants stop many times a day for trivial reasons (a temporary obstacle, a failed docking, lost navigation) and each stop used to wait for someone to notice it. Meanwhile, safety-critical values such as the pressure of an ATEX enclosure, or a battery running out at 3 a.m., had nobody watching them.
 
-Un robot autónomo en planta se detiene por motivos triviales muchas veces al día: un obstáculo temporal, un docking fallido, una pérdida de navegación. Cada parada requería que alguien la viera y reanudara la misión a mano. Además, hay variables críticas (presión de la carcasa ATEX, batería) que nadie mira a las 3 de la mañana.
+These watchdogs supervise a whole fleet 24/7 and **act on their own when it is safe**, and only then:
 
-## 💡 La solución
+| Watchdog | What it does |
+|---|---|
+| **Auto-resume** | Recovers paused missions: clear obstacle map → resume → verify, with a sleep/wake fallback. Only for whitelisted causes and recent events; everything else goes to an operator. |
+| **ATEX pressure** | Alerts on *confirmed* pressure changes (N consecutive readings), never on a single glitch. State persists across restarts, so nothing is reported twice. |
+| **Battery** | Keeps a history in SQLite (WAL) and alerts on low/critical levels with hysteresis; no alert while the robot is already charging. |
 
-Tres watchdogs independientes, dockerizados, que hablan con la API GraphQL de la plataforma de robots:
+It is a clean, vendor-neutral reimplementation of watchdogs I run in production for a fleet of inspection robots in oil & gas plants.
 
 ```mermaid
-flowchart TB
-    P[Plataforma de robots<br/>API GraphQL + JWT]
-    subgraph Watchdogs en Docker
-        M[Mission Auto-Resume<br/>1 hilo por robot]
-        X[ATEX Pressure Monitor]
-        B[Battery Monitor]
-    end
-    P <-->|estado misión / eventos<br/>ClearObstacleMap · resume · ASLEEP/AWAKE| M
-    P -->|estado presurización| X
-    P -->|nivel batería| B
-    X -->|alerta por cambio de estado| E[Email SMTP]
-    B --> D[(SQLite WAL)] --> API[API de consulta] --> O[Plataforma de<br/>monitorización]
+flowchart LR
+    P["Robot fleet platform<br/>(GraphQL API · or simulator)"] --> R["Runner<br/>one loop, every robot"]
+    R --> A["Auto-resume"]
+    R --> X["ATEX pressure"]
+    R --> B["Battery"]
+    A -- "clear map · resume<br/>sleep · wake" --> P
+    B --> DB[("SQLite WAL")]
+    A & X & B --> N["Alerts<br/>log · e-mail"]
+    DB --> API["HTTP API<br/>/status · /robots/&lt;id&gt;/battery"]
 ```
 
-### 🔄 Mission Auto-Resume
-- Monitoriza N robots en paralelo (un hilo por robot).
-- Detecta misiones en `PAUSED` y comprueba que el **último evento es "recuperable"** y reciente (lista configurable: fallo de navegación, docking excedido…).
-- Secuencia de recuperación: `ClearObstacleMap` (con reintentos) → espera → `resumeMission`. Si falla, **fallback** `ASLEEP → AWAKE → resume`.
-- Renovación automática del token sin cortar la monitorización. Parada segura con Ctrl+C.
+## Quick start: a misbehaving fleet in one command
 
-### 🧯 ATEX Pressure Monitor
-- Vigila la presurización de la carcasa ATEX del robot (estados `NOMINAL / LOW / CRITICALLY_LOW`).
-- **Deduplicación de alertas**: avisa al cambiar de estado estable, no en cada lectura.
-- Notificación por correo (SMTP/SSL) con credenciales externalizadas en variables de entorno. Tests unitarios.
+```bash
+docker compose up --build
+```
 
-### 🔋 Battery Monitor
-- Registra el estado de batería de cada robot en SQLite (modo WAL + timeout para evitar bloqueos) y lo expone por API.
-- Cliente GraphQL recreado al refrescar el token (evita sesiones zombis).
+Three simulated robots start their rounds and pause now and then: obstacles, docking timeouts, navigation failures, emergency stops. Their batteries drain and charge, and ATEX pressure glitches and drops. Watch the watchdogs deal with it:
 
-## 🧰 Stack
+- **Alert e-mails:** http://localhost:8025 (Mailpit inbox)
+- **Live state:** http://localhost:8080/status
+- **Battery history:** http://localhost:8080/robots/inspector-01/battery?hours=1
 
-| Capa | Tecnologías |
-|---|---|
-| Lenguaje | Python 3 · threading · `gql` (GraphQL) · PyYAML · requests |
-| Datos | SQLite (WAL) · API ligera para consulta |
-| Notificaciones | SMTP / EmailMessage |
-| Infra | Docker · scripts de actualización · configuración por YAML + `.env` |
-| Calidad | tests unitarios · logs por robot |
+```text
+INFO   ALERT [INFO] Inspector 02: Mission 'Daily gauge round' resumed automatically — Recovered in 10 s. Steps: clear obstacle map → resume
+ERROR  ALERT [CRITICAL] Inspector 01: ATEX pressure LOW — Confirmed after 2 readings (raw: PRESSURE_LOW)
+INFO   ALERT [INFO] Inspector 01: ATEX pressure back to nominal — Raw: PRESSURE_NOMINAL
+```
 
-## ⚙️ Aspectos de ingeniería destacados
+Without Docker: `pip install -e ".[dev]"` and `fleet-watchdogs -c config/example.yaml`.
 
-- 🧠 **Recuperación segura, no ciega**: solo se reanuda si la causa está en una lista blanca y el evento tiene menos de X segundos.
-- 🧱 **Un servicio, una responsabilidad**: cada watchdog se despliega, actualiza y reinicia por separado.
-- 🔐 **Cero secretos en código**: todo por entorno, con validación de variables obligatorias al arrancar.
+## How auto-resume decides
 
-## 🔬 Cómo trabajo con estas tecnologías
+```mermaid
+stateDiagram-v2
+    [*] --> Paused
+    Paused --> Escalated: cause not whitelisted, or event too old, or notify-only mode
+    Paused --> Settling: clear obstacle map (retries)
+    Settling --> Verifying: resume
+    Verifying --> Recovered: mission running again
+    Verifying --> Waking: still paused → sleep
+    Waking --> Resuming: wake
+    Resuming --> Verifying2: resume
+    Verifying2 --> Recovered: running
+    Verifying2 --> Escalated: still paused → CRITICAL alert
+    Recovered --> [*]
+    Escalated --> [*]: operator
+```
 
-- **Empezar por el fallo real**: cada watchdog nace de un tipo de incidencia concreto medido en planta (paradas por obstáculo, avisos ATEX perdidos, baterías agotadas de noche), no de una lista de features.
-- **Configuración por YAML + entorno**: robots, intervalos, listas blancas y credenciales fuera del código; el mismo contenedor sirve para cualquier planta.
-- **Probar sin robot**: tests unitarios con respuestas GraphQL simuladas para validar la lógica de decisión antes de tocar un robot real.
-- **Desplegar poco a poco**: primero en modo "solo avisa", después en modo "actúa", robot a robot.
+- **Recover safely, not blindly:** only causes on a configurable whitelist, and only if the event is recent (`max_event_age_s`). An old pause means conditions may have changed.
+- **First notify, then act:** `mode: notify` reports what it *would* do without touching any robot. That is how a new site starts; `mode: act` comes once operations trust it.
+- **No loops:** two strategies, then a single CRITICAL alert. It never fights an operator either: if someone resumes the mission mid-recovery, the watchdog steps back.
+- **Nothing blocks:** each robot has a small state machine advanced on every cycle. One loop supervises the whole fleet, and a slow robot never delays the others.
 
-## 👤 Mi rol
+## Connecting a real platform
 
-Diseño, desarrollo, despliegue y operación de los tres servicios en planta.
+`GraphQLPlatform` handles login, token caching, refresh before expiry and a single retry when the API answers `401` or `UNAUTHENTICATED`. The queries in `src/fleet_watchdogs/queries/` follow a generic schema; adapt them and the `_parse` lines to your vendor. The watchdogs, alerts and storage stay the same.
 
-## 📬 Contacto
+```yaml
+platform:
+  type: graphql
+  graphql_url: https://robots.example.com/graphql
+  login_url: https://robots.example.com/api/login
+robots:
+  - { id: "robot-a", name: "Inspector A" }
+```
 
-Ander Sein · [LinkedIn](https://www.linkedin.com/in/ander-sein-a24097195/) · aseinotegi@gmail.com
+Credentials only come from the environment (`PLATFORM_USERNAME`, `PLATFORM_API_KEY`, `SMTP_USERNAME`, `SMTP_PASSWORD`). A key or password written in the YAML is refused at start-up.
+
+## Design decisions
+
+- **One interface, many platforms.** Watchdogs depend on a small `RobotPlatform` protocol, not on a vendor SDK. The simulator and the GraphQL adapter are interchangeable, which is also what makes the logic testable without a robot.
+- **Failures stay contained.** An exception from one robot or one watchdog is counted and logged; the rest of the fleet keeps being supervised. A broken e-mail server never silences the log.
+- **Alerts with intent.** Each alert has a severity. Routine recoveries are `INFO` and stay in the log; e-mail is reserved for what needs a human (`min_severity`).
+- **Durable state where it matters.** ATEX state is written atomically (write, then rename) so a restart neither forgets nor repeats an alert. Battery history lives in SQLite in WAL mode, so the API can read while the watchdog writes, with automatic retention.
+
+## Project layout
+
+```text
+src/fleet_watchdogs/
+  platform.py          vendor-neutral interface (missions, battery, ATEX, actions)
+  graphql_platform.py  GraphQL adapter: token login, refresh, retries
+  simulator.py         misbehaving fleet for demos and tests
+  auto_resume.py       recovery state machine
+  atex.py              confirmed state changes + persistence
+  battery.py           SQLite history + hysteresis alerts
+  notify.py            log and SMTP channels
+  runner.py            supervision loop with isolated failures
+  api.py               read-only HTTP API (standard library)
+tests/                 46 tests, including two simulated hours of fleet operation
+```
+
+## Tests
+
+```bash
+pytest -q
+ruff check .
+```
+
+The suite covers every recovery path (retries, fallback, escalation, operator taking over), glitch filtering, persistence across restarts, hysteresis, token refresh, failure isolation and a two-hour simulated run of the whole fleet. CI runs it on Python 3.10–3.13 and builds the Docker image.
+
+---
+
+**Ander Sein** · IIoT & industrial automation engineer · [andersein.com](https://andersein.com) · [LinkedIn](https://www.linkedin.com/in/ander-sein-a24097195/)
+
+MIT License
