@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fleet-watchdogs"
+version = "1.0.0"
+description = "Autonomous watchdogs for inspection robot fleets: safe mission auto-resume, ATEX pressure and battery supervision"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Ander Sein Otegui", email = "aseinotegi@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+]
+keywords = ["robotics", "fleet", "watchdog", "atex", "graphql", "iiot", "industrial"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: System :: Monitoring",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+fleet-watchdogs = "fleet_watchdogs.__main__:main"
+
+[project.urls]
+Homepage = "https://andersein.com"
+Source = "https://github.com/aseinotegi/robot-fleet-watchdogs-showcase"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"fleet_watchdogs.queries" = ["*.graphql"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "BLE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

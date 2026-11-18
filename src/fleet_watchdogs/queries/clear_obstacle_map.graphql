@@ -1,0 +1,5 @@
+mutation ClearObstacleMap($robotId: ID!) {
+  clearObstacleMap(robotId: $robotId) {
+    success
+  }
+}

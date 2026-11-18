@@ -1,0 +1,11 @@
+query CurrentMission($robotId: ID!) {
+  currentMission(robotId: $robotId) {
+    id
+    name
+    status
+    lastEvent {
+      type
+      timestamp
+    }
+  }
+}

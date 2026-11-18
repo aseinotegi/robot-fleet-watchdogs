@@ -1,0 +1,5 @@
+mutation SetSleep($robotId: ID!, $asleep: Boolean!) {
+  setRobotSleep(robotId: $robotId, asleep: $asleep) {
+    success
+  }
+}

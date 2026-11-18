@@ -1,0 +1,9 @@
+query Battery($robotId: ID!) {
+  robotStatus(robotId: $robotId) {
+    battery {
+      percentage
+      chargingState
+      voltage
+    }
+  }
+}

@@ -1,0 +1,5 @@
+mutation ResumeMission($robotId: ID!) {
+  resumeMission(robotId: $robotId) {
+    success
+  }
+}

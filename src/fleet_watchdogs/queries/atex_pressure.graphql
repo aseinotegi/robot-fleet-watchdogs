@@ -1,0 +1,7 @@
+query AtexPressure($robotId: ID!) {
+  robotStatus(robotId: $robotId) {
+    atexPressure {
+      state
+    }
+  }
+}

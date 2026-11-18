@@ -1,0 +1,56 @@
+# Docker demo configuration (simulated fleet + Mailpit inbox).
+# Credentials only from the environment:
+#   PLATFORM_USERNAME, PLATFORM_API_KEY, SMTP_USERNAME, SMTP_PASSWORD
+
+platform:
+  type: simulator          # simulator | graphql
+  simulated_robots: 3
+  # graphql_url: https://robots.example.com/graphql
+  # login_url:   https://robots.example.com/api/login
+
+# Robots to supervise (only for the graphql platform; the simulator brings its own)
+robots: []
+#  - { id: "robot-a", name: "Inspector A" }
+
+check_interval_s: 5
+
+watchdogs:
+  auto_resume:
+    enabled: true
+    mode: act                # notify: only report what it would do · act: recover
+    recoverable_events: [OBSTACLE_DETECTED, DOCKING_TIMEOUT, NAVIGATION_FAILED, LOCALIZATION_LOST]
+    max_event_age_s: 120     # older pauses are left to an operator
+    clear_retries: 3
+    settle_s: 5
+    verify_s: 20
+
+  atex:
+    enabled: true
+    confirmation_readings: 2 # consecutive readings before a change counts
+    nominal_states: [PRESSURE_NOMINAL]
+    low_states: [PRESSURE_LOW, PRESSURE_CRITICALLY_LOW]
+    state_file: state/atex.json
+
+  battery:
+    enabled: true
+    low: 20
+    critical: 10
+    clear: 25                # hysteresis: back to OK only above this
+    record_every_s: 60
+    retention_days: 30
+    db_path: state/battery.db
+
+notifications:
+  email:
+    enabled: true
+    host: mailpit
+    port: 1025
+    security: none
+    min_severity: INFO       # demo: show every event in the inbox
+    sender: fleet-watchdogs@example.com
+    recipients: [operations@example.com]
+
+api:
+  enabled: true
+  host: 0.0.0.0
+  port: 8080
